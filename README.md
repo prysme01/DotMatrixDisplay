@@ -14,6 +14,15 @@ I use it to print usefull messages from my home automation solution (jeedom).
 * Read a file to display text
 * more to come
 
+### Usage
+* Make sure your DotMatrix is properly configured according to [MAX72xx](https://github.com/MajicDesigns/MD_MAX72XX) (MAX72xx.h)
+* Drop the code to your ESP8266, third party libraries are included
+* First time the ESP8266 should act as an access point (ESPxxxx), connect to it then go to http://192.168.4.1/ to configure your WIFI SSID/Password (STORE in EEPROM), then restart
+* OLED should now display your IP on your network
+* HTTP Command is available and describe at http://IP/command
+
+### Usage 
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
