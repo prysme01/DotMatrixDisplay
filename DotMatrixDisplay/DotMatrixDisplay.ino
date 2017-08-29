@@ -1,12 +1,14 @@
 // Configure is you want to use OLED display or DEBUG to serial
 // Comment option to disable
 #define USE_OLED_DISPLAY 
-#define USE_DEBUG 0
+#define USE_DEBUG 1
 
 #include <MD_Parola.h>          // https://github.com/MajicDesigns/MD_Parola
 #include <MD_MAX72xx.h>         // https://github.com/MajicDesigns/MD_MAX72XX
 #include <MD_MAX72xx_lib.h>
 #include <SPI.h>
+#include "utf8_font.h"
+//#include "utf8_tools.c"
 
 #ifdef USE_OLED_DISPLAY
   #include <Wire.h>
@@ -46,7 +48,7 @@
 
 
 #define TIMEOUT_PORTAL 10
-uint8_t nStatus = 0;
+uint8_t messageType = 0;
 uint8_t frameDelay = 25; // default frame delay value
 char currentMessage[80] = "";
 uint8_t pin_led = 16;
@@ -58,6 +60,69 @@ ESP8266WebServer server (80);
 
 //MD_Parola Parola = MD_Parola(DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES); // HARDWARE SPI for dot matrix display
 MD_Parola Parola = MD_Parola(CS_PIN, MAX_DEVICES); // HARDWARE SPI for dot matrix display
+
+
+
+uint8_t utf8Ascii(uint8_t ascii)
+// Convert a single Character from UTF8 to Extended ASCII according to ISO 8859-1,
+// also called ISO Latin-1. Codes 128-159 contain the Microsoft Windows Latin-1
+// extended characters:
+// - codes 0..127 are identical in ASCII and UTF-8
+// - codes 160..191 in ISO-8859-1 and Windows-1252 are two-byte characters in UTF-8
+//                 + 0xC2 then second byte identical to the extended ASCII code.
+// - codes 192..255 in ISO-8859-1 and Windows-1252 are two-byte characters in UTF-8
+//                 + 0xC3 then second byte differs only in the first two bits to extended ASCII code.
+// - codes 128..159 in Windows-1252 are different, but usually only the €-symbol will be needed from this range.
+//                 + The euro symbol is 0x80 in Windows-1252, 0xa4 in ISO-8859-15, and 0xe2 0x82 0xac in UTF-8.
+//
+// Modified from original code at http://playground.arduino.cc/Main/Utf8ascii
+// Extended ASCII encoding should match the characters at http://www.ascii-code.com/
+//
+// Return "0" if a byte has to be ignored.
+{
+  static uint8_t cPrev;
+  uint8_t c = '\0';
+
+  if (ascii < 0x7f)   // Standard ASCII-set 0..0x7F, no conversion
+  {
+    cPrev = '\0';
+    c = ascii;
+  }
+  else
+  {
+    switch (cPrev)  // Conversion depending on preceding UTF8-character
+    {
+    case 0xC2: c = ascii;  break;
+    case 0xC3: c = ascii | 0xC0;  break;
+    case 0x82: if (ascii==0xAC) c = 0x80; // Euro symbol special case
+    }
+    cPrev = ascii;   // save last char
+  }
+
+  PRINTX("\nConverted 0x", ascii);
+  PRINTX(" to 0x", c);
+
+  return(c);
+}
+
+void utf8Ascii(char* s)
+// In place conversion UTF-8 string to Extended ASCII
+// The extended ASCII string is always shorter.
+{
+  uint8_t c, k = 0;
+  char *cp = s;
+
+  PRINT("\nConverting: ", s);
+
+  while (*s != '\0')
+  {
+    c = utf8Ascii(*s++);
+    if (c != '\0')
+      *cp++ = c;
+  }
+  *cp = '\0';   // terminate the new string
+}
+
 
 void configModeCallback (WiFiManager *myWiFiManager) {
   #if USE_DEBUG
@@ -111,7 +176,8 @@ void handleCommand() {
   String intensity;
   String command;
   String text;
-  String message = "Number of args received:";
+  String type;
+  String message = "Number of args received: ";
   if (server.args()==0) {
      server.send(200, "text/plain", "parameter : intensity (int), text= String to display");
      return;
@@ -126,24 +192,35 @@ void handleCommand() {
    intensity=server.arg("intensity");
    command = server.arg("command");
    text = server.arg("text");
+   type = server.arg("type");
   } 
   
   if (intensity != "") {
     setIntensity(intensity);
   }
   if (text != "") {
-    nStatus=1;
     text.toCharArray(currentMessage,sizeof(currentMessage));
     
   }
+  if (type!="") {
+    Serial.println(type);
+    messageType = atoi(type.c_str());
+    Serial.println(messageType);
+  } else {
+    // no message type then defaut one time message
+    messageType=1;
+  }
 
- // Send HTTP response and log
- server.send(200, "text/plain", message);       //Response to the HTTP request
+  // convert UTF8 to ASCII in place
+  utf8Ascii(currentMessage);
+  
+  // Send HTTP response and log
+  server.send(200, "text/plain", message);       //Response to the HTTP request
 
- #if USE_DEBUG
-  Serial.println(message);
-  Serial.println(text.length());
- #endif
+  #if USE_DEBUG
+    Serial.println(message);
+    Serial.println(text.length());
+  #endif
 }
 
 /**
@@ -181,8 +258,10 @@ void setup() {
   Parola.displayClear();
   Parola.displaySuspend(false);
   Parola.setIntensity(EEPROM.read(0));  // Restore last intensity value saved from EEPROM
-  Parola.displayText ("TEST", PA_CENTER, 25, 1200, PA_OPENING_CURSOR , PA_OPENING_CURSOR ); 
+  Parola.setFont(ExtASCII);
   
+  
+
   WiFiManager wifiManager;
   wifiManager.setAPCallback(configModeCallback);
   //wifiManager.setConfigPortalTimeout(TIMEOUT_PORTAL);
@@ -194,7 +273,7 @@ void setup() {
     //ESP.reset();
     //delay(5000);
   } else {
-    Parola.displayText ("WIFI ok", PA_CENTER, 25, 3000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
+    Parola.displayText ("WIFI ok", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
     #ifdef USE_OLED_DISPLAY
       display.drawString(0, 0, "Connected to " );
       display.drawString(0, 20, "SSID:"+WiFi.SSID() );
@@ -225,12 +304,41 @@ void loop() {
   // Handle Dot Matrix display
   if (Parola.displayAnimate()) // True if animation ended
    {
-    switch (nStatus) {
-      if (nStatus >7){nStatus ==0;}
-    case 1:
+    switch (messageType) {
+      if (messageType >10){messageType ==0;}
+
+      // No message to display
+      case 0:
+      ;
+      break;
+      
+      // One time message
+      case 1:
          // Parola.displayText(currentMessage, PA_CENTER, 25, 1200, PA_OPENING_CURSOR  , PA_OPENING_CURSOR );
-          Parola.displayScroll(currentMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);     
-      nStatus=0;
+          
+          Parola.displayScroll(currentMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);
+          messageType=0;
+      break;
+
+      // Looping message
+      case 2:
+          // Parola.displayText(currentMessage, PA_CENTER, 25, 1200, PA_OPENING_CURSOR  , PA_OPENING_CURSOR );
+          Serial.println("type 2 case");
+          
+          Parola.displayScroll(currentMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);
+          messageType=2;
+      break;
+
+      // TESTING
+      case 9:
+          //Parola.displayScroll('$', PA_LEFT, PA_SCROLL_LEFT, frameDelay);
+          Parola.displayText("$",  PA_CENTER, 20, 500,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
+          messageType=0;
+      break;
+      // Looping message
+      case 10:
+          Parola.displayScroll("voila un é et un à", PA_LEFT, PA_SCROLL_LEFT, frameDelay);
+          messageType=0;
       break;
     }
   }
