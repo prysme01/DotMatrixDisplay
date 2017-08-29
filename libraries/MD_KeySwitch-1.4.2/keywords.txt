@@ -1,0 +1,34 @@
+#######################################
+# Syntax Coloring Map
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+MD_KeySwitch	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+setDebounceTime KEYWORD2
+setDoublePressTime KEYWORD2
+setRepeatTime KEYWORD2
+setLongPressTime KEYWORD2
+enableRepeat  KEYWORD2
+enableDoublePress KEYWORD2
+enableLongPress KEYWORD2
+enableRepeatResult  KEYWORD2
+begin KEYWORD2
+read KEYWORD2
+
+######################################
+# Constants (LITERAL1)
+#######################################
+
+KS_NULL LITERAL1
+KS_PRESS LITERAL1
+KS_DPRESS LITERAL1
+KS_LONGPRESS LITERAL1
+KS_RPTPRESS LITERAL1
