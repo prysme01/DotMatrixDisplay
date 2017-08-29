@@ -1,4 +1,4 @@
-// Configure is you want to use OLED display or DEBUG to serial
+// Configure if you want to use OLED display or DEBUG to serial
 // Comment option to disable
 #define USE_OLED_DISPLAY 
 #define USE_DEBUG 0
