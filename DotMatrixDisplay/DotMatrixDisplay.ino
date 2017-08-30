@@ -1,4 +1,4 @@
-// Configure if you want to use OLED display and DEBUG to serial
+// Configure is you want to use OLED display or DEBUG to serial
 // Comment option to disable
 #define USE_OLED_DISPLAY 
 #define USE_DEBUG 1
@@ -38,6 +38,9 @@
 #include <WiFiManager.h>          //WiFi Configuration Magic https://github.com/tzapu/WiFiManager 
 #include "res.h"                  // Picture resources in the sketch directory
 #include <EEPROM.h>               // Library for handle teh EEPROM
+
+#include <TimeLib.h>
+#include <NtpClientLib.h>
 
 // DOT MATRIX PIN configuration
 #define MAX_DEVICES 4
@@ -274,6 +277,22 @@ void setup() {
     //delay(5000);
   } else {
     Parola.displayText ("WIFI ok", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
+    NTP.begin("pool.ntp.org", 1, true);
+    NTP.setInterval(600);
+    NTP.onNTPSyncEvent([](NTPSyncEvent_t error) {
+      if (error) {
+        Serial.print("Time Sync error: ");
+        if (error == noResponse)
+          Serial.println("NTP server not reachable");
+        else if (error == invalidAddress)
+          Serial.println("Invalid NTP server address");
+        }
+      else {
+        Serial.print("Got NTP time: ");
+        Serial.println(NTP.getTimeDateString(NTP.getLastNTPSync()));
+      }
+    });
+    
     #ifdef USE_OLED_DISPLAY
       display.drawString(0, 0, "Connected to " );
       display.drawString(0, 20, "SSID:"+WiFi.SSID() );
@@ -297,6 +316,8 @@ void setup() {
   #endif
 }
 
+
+
 void loop() {
   // Handle Web server client request
   server.handleClient();
@@ -308,8 +329,13 @@ void loop() {
       if (messageType >10){messageType ==0;}
 
       // No message to display
-      case 0:
-      ;
+      case 0: {
+          String time = NTP.getTimeDateString();
+          char *cstr = new char[time.length() + 1];
+          strcpy(cstr, (const char *)time.c_str());
+          Parola.displayText(cstr,  PA_CENTER, 50, 5000,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
+          //delete [] cstr;
+      }
       break;
       
       // One time message
