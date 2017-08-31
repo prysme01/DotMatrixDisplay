@@ -57,6 +57,8 @@ DallasTemperature DS18B20(&oneWire);
 char temperatureCString[6];
 char temperatureFString[6];
 
+long temps;
+
 #define TIMEOUT_PORTAL 10
 uint8_t messageType = 0;
 uint8_t frameDelay = 25; // default frame delay value
@@ -295,6 +297,7 @@ void setup() {
   Parola.displaySuspend(false);
   Parola.setIntensity(EEPROM.read(0));  // Restore last intensity value saved from EEPROM
   Parola.setFont(ExtASCII);
+  Parola.setTextAlignment(PA_CENTER);
   
   
 
@@ -311,7 +314,7 @@ void setup() {
   } else {
     Parola.displayText ("WIFI ok", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
     NTP.begin("pool.ntp.org", 1, true);
-    NTP.setInterval(600);
+    NTP.setInterval(3600);
     NTP.onNTPSyncEvent([](NTPSyncEvent_t error) {
       if (error) {
         Serial.print("Time Sync error: ");
@@ -325,7 +328,6 @@ void setup() {
         Serial.println(NTP.getTimeDateString(NTP.getLastNTPSync()));
       }
     });
-    
     #ifdef USE_OLED_DISPLAY
       display.drawString(0, 0, "Connected to " );
       display.drawString(0, 20, "SSID:"+WiFi.SSID() );
@@ -347,6 +349,12 @@ void setup() {
     // Flush OLED display
     display.display();  
   #endif
+
+  // Get first sync
+  NTP.getTimeDateString();
+  
+  // init time
+  temps = millis();
 }
 
 
@@ -358,26 +366,28 @@ void loop() {
   // Handle Dot Matrix display
   if (Parola.displayAnimate()) // True if animation ended
    {
-
+        if((millis() - temps) > 10000) {
         int photocellReading = analogRead(A0);
           Serial.println(analogRead(A0));
 
           if (photocellReading < 300) {
               Serial.println(" - Noir");
-              setIntensity(1);
+              Parola.setIntensity(1);
             } else if (photocellReading < 600) {
               Serial.println(" - Sombre");
-              setIntensity(3);
+              Parola.setIntensity(3);
             } else if (photocellReading < 800) {
               Serial.println(" - Lumiere");
-              setIntensity(5);
+              Parola.setIntensity(5);
             } else if (photocellReading < 950) {
               Serial.println(" - Lumineux");
-              setIntensity(10);
+              Parola.setIntensity(10);
             } else {
               Serial.println(" - Tres lumineux");
-              setIntensity(15);
+              Parola.setIntensity(15);
             }
+           temps = millis(); 
+        }
 
     
     switch (messageType) {
@@ -385,18 +395,22 @@ void loop() {
 
       // No message to display
       case 0: {
-          String time = NTP.getTimeDateString();
-          char *cstr = new char[time.length() + 1];
-          strcpy(cstr, (const char *)time.c_str());
-          Parola.displayText(cstr,  PA_CENTER, 30, 10,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
+          String time = NTP.getTimeDateString().substring(0,5);
+          char *cstr = new char[time.length()];
+          strcpy(cstr, time.c_str());
+          //Parola.displayText(cstr,  PA_CENTER, 20, 0,  PA_NO_EFFECT,  PA_NO_EFFECT);
+          Parola.setTextAlignment(PA_CENTER);
+          Parola.print(cstr);
+          //Parola.displayText(cstr, PA_CENTER, 30, 10, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
           //delete [] cstr;
+          delay(1000);
+        
       }
       break;
       
       // One time message
       case 1:
          // Parola.displayText(currentMessage, PA_CENTER, 25, 1200, PA_OPENING_CURSOR  , PA_OPENING_CURSOR );
-          
           Parola.displayScroll(currentMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);
           messageType=0;
       break;
@@ -412,13 +426,6 @@ void loop() {
       // TESTING
       case 9:{
           
-
-
-          
-          char lumstr[5];
-          sprintf(lumstr, "%d", photocellReading);
-          Serial.println(lumstr);
-          Parola.displayText(lumstr,  PA_CENTER, 20, 500,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
           messageType=9;
       }
       break;
@@ -429,4 +436,5 @@ void loop() {
       break;
     }
   }
+  
 }
