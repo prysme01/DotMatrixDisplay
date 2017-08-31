@@ -5,7 +5,7 @@ I use it to print usefull messages from my home automation solution (jeedom).
 
 ### Prerequisites
 
-* ESP8266 (mine is Wemos D1 NodeMcu  ESP12F 
+* ESP8266 (mine is Wemos D1 NodeMcu  ESP12F)
 * DOT Matrix based on MAX7219
 * OLED display (SSD1306 and SH1106 based 128x64 pixel) - optional
 * Temperature sensor DS18B20 - optional

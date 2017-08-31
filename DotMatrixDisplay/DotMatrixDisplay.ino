@@ -176,6 +176,16 @@ void setIntensity(String value ){
   } 
 }
 
+void setIntensity(int value ){
+  byte i = (byte) value;
+  if ((i>=0) && (i<=15)){  
+    // Write the new value to EEPROM
+    EEPROM.write(0, i);       
+    EEPROM.commit();
+    Parola.setIntensity(i);   
+  } 
+}
+
 #ifdef USE_OLED_DISPLAY
 /**
  * Display LOGO for 1 second (Logo is declared in res.h)
@@ -263,6 +273,8 @@ void setup() {
 
   // Start DS18B20 measurement
   DS18B20.begin();
+
+  //pinMode(A0,INPUT);
   
   //pinMode(LED_BUILTIN,OUTPUT);                        // configure the builtin led to OUTPUT mode
   //digitalWrite(LED_BUILTIN,!digitalRead(pin_led));  // switch the status (values can be LOW or HIGH)
@@ -346,6 +358,28 @@ void loop() {
   // Handle Dot Matrix display
   if (Parola.displayAnimate()) // True if animation ended
    {
+
+        int photocellReading = analogRead(A0);
+          Serial.println(analogRead(A0));
+
+          if (photocellReading < 300) {
+              Serial.println(" - Noir");
+              setIntensity(1);
+            } else if (photocellReading < 600) {
+              Serial.println(" - Sombre");
+              setIntensity(3);
+            } else if (photocellReading < 800) {
+              Serial.println(" - Lumiere");
+              setIntensity(5);
+            } else if (photocellReading < 950) {
+              Serial.println(" - Lumineux");
+              setIntensity(10);
+            } else {
+              Serial.println(" - Tres lumineux");
+              setIntensity(15);
+            }
+
+    
     switch (messageType) {
       if (messageType >10){messageType ==0;}
 
@@ -354,7 +388,7 @@ void loop() {
           String time = NTP.getTimeDateString();
           char *cstr = new char[time.length() + 1];
           strcpy(cstr, (const char *)time.c_str());
-          Parola.displayText(cstr,  PA_CENTER, 50, 5000,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
+          Parola.displayText(cstr,  PA_CENTER, 30, 10,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
           //delete [] cstr;
       }
       break;
@@ -375,14 +409,19 @@ void loop() {
           Parola.displayScroll(currentMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);
           messageType=2;
       break;
-
       // TESTING
-      case 9:
-          //Parola.displayScroll('$', PA_LEFT, PA_SCROLL_LEFT, frameDelay);
-          Parola.displayText("$",  PA_CENTER, 20, 500,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
-          messageType=0;
+      case 9:{
+          
+
+
+          
+          char lumstr[5];
+          sprintf(lumstr, "%d", photocellReading);
+          Serial.println(lumstr);
+          Parola.displayText(lumstr,  PA_CENTER, 20, 500,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
+          messageType=9;
+      }
       break;
-      // Looping message
       case 10:
             getTemperature();
             Parola.displayText(temperatureCString,  PA_CENTER, 20, 500,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
