@@ -7,11 +7,16 @@ I use it to print usefull messages from my home automation solution (jeedom).
 
 * ESP8266 (mine is Wemos D1 NodeMcu  ESP12F 
 * DOT Matrix based on MAX7219
-* OLED display (SSD1306 and SH1106 based 128x64 pixel) - not mandatory
+* OLED display (SSD1306 and SH1106 based 128x64 pixel) - optional
+* Temperature sensor DS18B20 - optional
+* Light sensor GL5516 - optional
 
 ### Features
 * Display message by using simple http remote command (GET URL)
-* Read a file to display text
+* NTP client for date and time
+* Temperature measurement
+* LED matrix dimming based on light sensor
+* Read a file to display text (TODO)
 * more to come
 
 ### Usage

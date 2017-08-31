@@ -42,13 +42,20 @@
 #include <TimeLib.h>
 #include <NtpClientLib.h>
 
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
 // DOT MATRIX PIN configuration
 #define MAX_DEVICES 4
 #define CLK_PIN   D5  // or SCK
 #define DATA_PIN  D7  // or MOSI
 #define CS_PIN    D6  // or SS
 
-
+#define DS18B20BUS D1 // OneWire Dallas PIN
+OneWire oneWire(DS18B20BUS);
+DallasTemperature DS18B20(&oneWire);
+char temperatureCString[6];
+char temperatureFString[6];
 
 #define TIMEOUT_PORTAL 10
 uint8_t messageType = 0;
@@ -64,7 +71,18 @@ ESP8266WebServer server (80);
 //MD_Parola Parola = MD_Parola(DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES); // HARDWARE SPI for dot matrix display
 MD_Parola Parola = MD_Parola(CS_PIN, MAX_DEVICES); // HARDWARE SPI for dot matrix display
 
-
+void getTemperature() {
+  float tempC;
+  float tempF;
+  do {
+    DS18B20.requestTemperatures(); 
+    tempC = DS18B20.getTempCByIndex(0);
+    dtostrf(tempC,2,2,temperatureCString);
+    tempF = DS18B20.getTempFByIndex(0);
+    dtostrf(tempF,3,2,temperatureFString);
+    delay(100);
+  } while (tempC==85.0 || tempC==(-127.0));
+}
 
 uint8_t utf8Ascii(uint8_t ascii)
 // Convert a single Character from UTF8 to Extended ASCII according to ISO 8859-1,
@@ -242,6 +260,9 @@ void setup() {
   #if USE_DEBUG
     Serial.begin(115200);
   #endif
+
+  // Start DS18B20 measurement
+  DS18B20.begin();
   
   //pinMode(LED_BUILTIN,OUTPUT);                        // configure the builtin led to OUTPUT mode
   //digitalWrite(LED_BUILTIN,!digitalRead(pin_led));  // switch the status (values can be LOW or HIGH)
@@ -363,7 +384,8 @@ void loop() {
       break;
       // Looping message
       case 10:
-          Parola.displayScroll("voila un é et un à", PA_LEFT, PA_SCROLL_LEFT, frameDelay);
+            getTemperature();
+            Parola.displayText(temperatureCString,  PA_CENTER, 20, 500,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
           messageType=0;
       break;
     }
