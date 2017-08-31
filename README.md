@@ -26,7 +26,8 @@ I use it to print usefull messages from my home automation solution (jeedom).
 * OLED should now display your IP on your network
 * HTTP Command is available and describe at http://IP/command
 
-### Usage 
+### Sketch
+![alt text](https://raw.githubusercontent.com/prysme01/DotMatrixDisplay/master/img/sketch.png)
 
 ## License
 
