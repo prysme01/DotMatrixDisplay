@@ -23,7 +23,7 @@
 #endif
 
 #include <DNSServer.h>
-#include <ESP8266WebServer.h>
+
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiAP.h>
 #include <ESP8266WiFiGeneric.h>
@@ -54,7 +54,7 @@
 #define DATA_PIN  D7  // or MOSI
 #define CS_PIN    D6  // or SS
 
-#define DS18B20BUS D1 // OneWire Dallas PIN
+#define DS18B20BUS D4 // OneWire Dallas PIN
 OneWire oneWire(DS18B20BUS);
 DallasTemperature DS18B20(&oneWire);
 char temperatureCString[6];
@@ -74,7 +74,6 @@ IPAddress mqtt_server(37,187,1,120); // replace this with your MQTT brokers IP
 WiFiClient espClient;
 PubSubClient mqttclient(espClient);
 
-ESP8266WebServer server (80);
 #ifdef USE_OLED_DISPLAY
   SSD1306Brzo  display(0x3c, D1, D2);
 #endif 
@@ -210,68 +209,7 @@ void OLEDWelcome() {
 }
 #endif
 
-/**
- * Endpoint for URL http://IP/command
- */
-void handleCommand() {
 
-  String intensity;
-  String command;
-  String text;
-  String type;
-  String message = "Number of args received: ";
-  if (server.args()==0) {
-     server.send(200, "text/plain", "parameter : intensity (int), text= String to display");
-     return;
-  }
-  message += server.args();
-  for (int i = 0; i < server.args(); i++) {
-    message += server.argName(i) + ": ";
-    message += server.arg(i) + "\n";
-    message += "\n";
-    
-   // Deal with the command
-   intensity=server.arg("intensity");
-   command = server.arg("command");
-   text = server.arg("text");
-   type = server.arg("type");
-  } 
-  
-  if (intensity != "") {
-    setIntensity(intensity);
-  }
-  if (text != "") {
-    text.toCharArray(parolaCurrentMessage,sizeof(parolaCurrentMessage));
-    
-  }
-  if (type!="") {
-    Serial.println(type);
-    parolaCurrentType = atoi(type.c_str());
-    Serial.println(parolaCurrentType);
-  } else {
-    // no message type then defaut one time message
-    parolaCurrentType=1;
-  }
-
-  // convert UTF8 to ASCII in place
-  utf8Ascii(parolaCurrentMessage);
-  
-  // Send HTTP response and log
-  server.send(200, "text/plain", message);       //Response to the HTTP request
-
-  #if USE_DEBUG
-    Serial.println(message);
-    Serial.println(text.length());
-  #endif
-}
-
-/**
- * Endpoint for URL http://ip/
- */
-void handleRoot() {
-  server.send ( 200, "text/plain", "this works as well" );
-  Parola.displayText ("Hit Root", PA_CENTER, 25, 3000, PA_OPENING_CURSOR , PA_OPENING_CURSOR ); 
-}
 
 /**
  * Setup code, run once a startup
@@ -523,7 +461,9 @@ void loop() {
       break;
       case 10:
             getTemperature();
-            Parola.displayText(temperatureCString,  PA_CENTER, 20, 500,  PA_SCROLL_LEFT,  PA_SCROLL_LEFT);
+            Serial.print("temperature is ");
+            Serial.println(temperatureCString);
+            Parola.displayScroll(temperatureCString,  PA_LEFT, PA_SCROLL_LEFT,  frameDelay);
           parolaCurrentType=0;
       break;
     }

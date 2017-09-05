@@ -1,0 +1,15 @@
+## MQTT CLI command
+mosquitto_pub -h MQTT_IP_TO_REPLACE -t jeedom/display -m '{
+  "text": "message 1",
+  "priorite": 1,
+  "type": 10,
+  "intensite": 1,
+  "repetition": 2
+}'
+
+## Publish message to be retain
+mosquitto_pub -h localhost -t test/sub1 -m "mon message de test 1" -q 2 
+mosquitto_pub -h localhost -t test/sub1 -m "mon message de test 2" -q 2 
+
+## Retrieve message and the missing message, id is the client ID needed by the -c option to get missed messages
+mosquitto_sub -t test/sub1 -q 2 -c --id esp
