@@ -1,9 +1,10 @@
 // Configure is you want to use OLED display or DEBUG to serial
 // Comment option to disable
 #define USE_OLED_DISPLAY 
+#define USE_LIGHT_SENSOR
 #define USE_DEBUG 1
 
-#include <MD_Parola.h>          // https://github.com/MajicDesigns/MD_Parola
+#include <MD_Parola.h>          // https://github.com/MajicDesigns/MD_parola
 #include <MD_MAX72xx.h>         // https://github.com/MajicDesigns/MD_MAX72XX
 #include <MD_MAX72xx_lib.h>
 #include <SPI.h>
@@ -48,30 +49,41 @@
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 
-// DOT MATRIX PIN configuration
-#define MAX_DEVICES 8
-#define CLK_PIN   D5  // or SCK
-#define DATA_PIN  D7  // or MOSI
-#define CS_PIN    D6  // or SS
+// ESP8266 PIN configuration
+#define CLK_PIN   D5  // Matrix CLK
+#define DATA_PIN  D7  // Matrix DIN
+#define CS_PIN    D6  // Matrix DS
+#define DS18B20BUS D4 // OneWire Dallas DS18B20 PIN
 
-#define DS18B20BUS D4 // OneWire Dallas PIN
+#define MAX_DEVICES 8 // Number of LED MATRIX module
+
+// DS18B20 Temperature sensor
 OneWire oneWire(DS18B20BUS);
 DallasTemperature DS18B20(&oneWire);
-char temperatureCString[6];
 
-long temps;                                         // Use in the loop to store execution time
+long millis_temperature;                                                    // Use in the loop to store execution time
+long millis_lightsensor;                                                    // Use in the loop to store execution time
 
-#define TIMEOUT_PORTAL 10
+// PAROLA 
 uint8_t parolaCurrentType = 0;
 uint8_t frameDelay = 25; // default frame delay value
-char parolaCurrentMessage[256] = "";
+//char parolaCurrentMessage[256] = "";
+char parolaCurrentMessage[120];
+String parolaCurrentAnimation;
+bool parolaIntensityManagedBySensor = true;                                 // light sensor management on/off
+bool newMessageAvailable = false;
+int LIGHT_SENSOR_POLLING=5000;                                              // Wait 5 sec to adjust LED matrix intensity based on light sensor
+MD_Parola parola = MD_Parola(CS_PIN, MAX_DEVICES);                          // HARDWARE SPI for dot matrix display
 uint8_t pin_led = 16;
 
 // MQTT CONFIGURATION
-const char* MQTT_TOPIC_MESSAGE = "jeedom/message";  // MQTT topic to subscribe for message
-const char* MQTT_CLIENT_ID ="ESP32Client";          // MQTT client id needed to get offline messages during reconnexion
-const IPAddress MQTT_BROKER_IP(37,187,1,120);       // MQTT BROKER IP address
-const int  MQTT_BROKER_PORT = 1883;                 // MQTT BROKER port
+const char* MQTT_TOPIC_MESSAGE = "jeedom/message";                          // MQTT topic to subscribe for message
+const char* MQTT_TOPIC_SENSOR  = "jeedom/ESP8266_LED_MATRIX_BOX/sensors";   // MQTT topic to publish temperature
+const char* MQTT_TOPIC_SENSOR_DEVICE  = "ESP8266_LED_MATRIX_BOX";           // MQTT topic to publish temperature
+const char* MQTT_CLIENT_ID ="ESP32Client";                                  // MQTT client id needed to get offline messages during reconnexion | not working mqtt lib doesnot support clean session
+const IPAddress MQTT_BROKER_IP(37,187,1,120);                               // MQTT BROKER IP address
+const int  MQTT_BROKER_PORT = 1883;                                         // MQTT BROKER port
+const int MQTT_POLLING_SENSOR = 10000;                                      // MQTT polling delay between sending temperature to jeedom in millisec
 
 WiFiClient espClient;
 PubSubClient mqttclient(espClient);
@@ -80,14 +92,7 @@ PubSubClient mqttclient(espClient);
   SSD1306Brzo  display(0x3c, D1, D2);
 #endif 
 
-MD_Parola Parola = MD_Parola(CS_PIN, MAX_DEVICES); // HARDWARE SPI for dot matrix display
 
-void getTemperature() {
-  float tempC;
-  DS18B20.requestTemperatures(); 
-  tempC = DS18B20.getTempCByIndex(0);
-  dtostrf(tempC,2,2,temperatureCString);
-}
 
 uint8_t utf8Ascii(uint8_t ascii)
 {
@@ -147,7 +152,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
     display.display();
   #endif
 
-  Parola.print("AP|MODE");
+  parola.print("AP|MODE");
 }
 
 #ifdef USE_OLED_DISPLAY
@@ -191,12 +196,12 @@ void setup() {
   #endif
   
   // Dot Matrix init
-  Parola.begin(); 
-  Parola.displayClear();
-  Parola.displaySuspend(false);
-  Parola.setIntensity(EEPROM.read(0));  // Restore last intensity value saved from EEPROM
-  Parola.setFont(ExtASCII);
-  Parola.setTextAlignment(PA_CENTER);
+  parola.begin(); 
+  parola.displayClear();
+  parola.displaySuspend(false);
+  parola.setIntensity(EEPROM.read(0));  // Restore last intensity value saved from EEPROM
+  parola.setFont(ExtASCII);
+  parola.setTextAlignment(PA_CENTER);
   
   WiFiManager wifiManager;
   wifiManager.setAPCallback(configModeCallback);
@@ -204,12 +209,12 @@ void setup() {
   Serial.println("Wifi.autoConnect start");
   int wifiStatus = wifiManager.autoConnect();
   if(!wifiStatus) {
-    Parola.print("Wifi ko");
+    parola.print("Wifi ko");
     //reset and try again, or maybe put it to deep sleep
     //ESP.reset();
     //delay(5000);
   } else {
-    Parola.displayText ("WIFI ok", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
+    parola.displayText ("WIFI ok", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
     NTP.begin("pool.ntp.org", 1, true);
     NTP.setInterval(3600);
     NTP.onNTPSyncEvent([](NTPSyncEvent_t error) {
@@ -232,11 +237,6 @@ void setup() {
     #endif
   }
   
-  // Start the webserver
-  //server.begin();
-  //server.on ( "/", handleRoot );
-  //server.on ( "/command", handleCommand );
-  
   // Print the IP address
   #if USE_DEBUG
     Serial.println(WiFi.localIP());
@@ -251,7 +251,8 @@ void setup() {
   NTP.getTimeDateString();
   
   // init time
-  temps = millis();
+  millis_temperature = millis();
+  millis_lightsensor = millis();
 
   mqttclient.setServer(MQTT_BROKER_IP, MQTT_BROKER_PORT);
   mqttclient.setCallback(mqttCallback);
@@ -278,8 +279,20 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     Serial.println("parseObject() failed");
     return;
   } else {
-    String ltext=root["text"].as<String>();
-    ltext.toCharArray(parolaCurrentMessage,ltext.length() + 1);
+
+    if (root["text"] != "") {
+      String text = root["text"].as<String>();
+      Serial.print("text: ");
+      Serial.println(text);
+      text.toCharArray(parolaCurrentMessage, sizeof(text)); 
+      Serial.print("parolaCurrentMessage: ");
+      Serial.println(parolaCurrentMessage);
+      //ltext.toCharArray(parolaCurrentMessage,ltext.length() + 1);
+    } else {
+      
+      strcpy (parolaCurrentMessage, "missing text in json");
+    }
+    newMessageAvailable = true;
     Serial.print("priorite: ");
     Serial.println((const char*)root["priorite"]);
     Serial.print("type: ");
@@ -287,59 +300,81 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     Serial.println((const char*)root["type"]);
     Serial.print("intensite: ");
     Serial.println((const char*)root["intensite"]);
+
+    // Dealing with intensity
+    if ( root["intensite"] != NULL) {
+      
+      // set specific intensity
+      parola.setIntensity(root["intensite"].as<String>().toInt());
+      parolaIntensityManagedBySensor = false;
+    } else {
+      parolaIntensityManagedBySensor = true;
+    }
+
+    // Dealing with intensity
+    if ( root["animation"] != NULL) {
+      Serial.print("Animation set to ");
+      Serial.println(root["animation"].as<String>());
+      parolaCurrentAnimation = root["animation"].as<String>();
+    } else {
+      Serial.println("Animation set to default PA_SLICE");
+      parolaCurrentAnimation = "PA_SLICE";
+    }
+    
     Serial.print("repetition: ");
     Serial.println((const char*)root["repetition"]);
   }
   // Free the memory
   free(payloadcopy);
-  // Switch on the LED if an 1 was received as first character
-  /*if ((char)payload[0] == '1') {
-    digitalWrite(BUILTIN_LED, LOW);   // Turn the LED on (Note that LOW is the voltage level
-    // but actually the LED is on; this is because
-    // it is acive low on the ESP-01)
-  } else {
-    digitalWrite(BUILTIN_LED, HIGH);  // Turn the LED off by making the voltage HIGH
-  }*/
-  
 }
 
-void sendTemptToMQQT() {
-  int photocellReading = analogRead(A0);
-          //Serial.println(analogRead(A0));
+/**
+ * Adjust LED matrix luminosity according to the Light sensor
+ */
+void adjustLuminosity() {
+  #ifdef USE_LIGHT_SENSOR
+    int photocellReading = analogRead(A0);
+    if (photocellReading < 600) {
+      //Serial.println(" - Noir");
+      parola.setIntensity(1);
+    } else if (photocellReading < 700) {
+      //Serial.println(" - Sombre");
+      parola.setIntensity(3);
+    } else if (photocellReading < 800) {
+      //Serial.println(" - Lumiere");
+      parola.setIntensity(5);
+    } else if (photocellReading < 1000) {
+      //Serial.println(" - Lumineux");
+      parola.setIntensity(7);
+    } else {
+      //Serial.println(" - Tres lumineux");
+      parola.setIntensity(15);
+    }
+  #endif
+}
 
-          if (photocellReading < 300) {
-              //Serial.println(" - Noir");
-              Parola.setIntensity(1);
-            } else if (photocellReading < 600) {
-              //Serial.println(" - Sombre");
-              Parola.setIntensity(3);
-            } else if (photocellReading < 800) {
-              //Serial.println(" - Lumiere");
-              Parola.setIntensity(5);
-            } else if (photocellReading < 950) {
-              //Serial.println(" - Lumineux");
-              Parola.setIntensity(10);
-            } else {
-              //Serial.println(" - Tres lumineux");
-              Parola.setIntensity(15);
-            }
-          
-          // send json to mqtt
-          StaticJsonBuffer<300> JSONbuffer;
-          JsonObject& JSONencoder = JSONbuffer.createObject();
-         
-          JSONencoder["device"] = "ESP8266";
-          JSONencoder["sensorType"] = "LightSensor";
-          JSONencoder["values"] = photocellReading;
-         
-          char JSONmessageBuffer[100];
-          JSONencoder.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
-         
-          if (mqttclient.publish("esp/test", JSONmessageBuffer) == true) {
-            Serial.println(JSONmessageBuffer);  
-          } else {
-            Serial.println("Error sending message");
-          }
+
+void sendTemperatureToMQTT() {
+
+  DS18B20.requestTemperatures();
+  
+  // send json to mqtt
+  StaticJsonBuffer<300> JSONbuffer;
+  JsonObject& JSONencoder = JSONbuffer.createObject();
+  
+  JSONencoder["device"] = MQTT_TOPIC_SENSOR_DEVICE;
+  JSONencoder["sensorType"] = "TemperatureSensor";
+  JSONencoder["temperature"] = DS18B20.getTempCByIndex(0);
+  /*DS18B20.requestTemperatures(); 
+  dtostrf(DS18B20.getTempCByIndex(0),2,2,parolaCurrentMessage);*/
+  char JSONmessageBuffer[100];
+  JSONencoder.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+ 
+  if (mqttclient.publish(MQTT_TOPIC_SENSOR, JSONmessageBuffer) == true) {
+    Serial.println(JSONmessageBuffer);  
+  } else {
+    Serial.println("Error sending message");
+  }
 }
 
 void loop() {
@@ -348,12 +383,41 @@ void loop() {
   //Serial.print("currentType : ");
   //Serial.println(parolaCurrentType);
   // start mqtt subscribe client
-  
 
   // Handle Dot Matrix display
-  if (Parola.displayAnimate()) // True if animation ended
-   {
 
+  /*if (parolaCurrentMessage!="") {  
+      Serial.print("message to animate : ");
+      
+      char* temp;
+      
+      
+      Serial.print("ici : ");
+      
+    }*/
+  
+  if (parola.displayAnimate())  {// True if animation ended
+    
+    if (newMessageAvailable) {
+      Serial.println("new msg available");
+      
+          char newMessage[120];
+          strcpy(newMessage,parolaCurrentMessage);
+          textEffect_t te = PA_GROW_UP;
+          parola.displayText(newMessage, PA_LEFT,15,1000,PA_OPENING_CURSOR,PA_OPENING_CURSOR );
+          //parola.displayText ("WIFI ok", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
+          //parola.displayScroll(newMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);
+          newMessageAvailable = false;
+          Serial.println(newMessage);
+        }
+      //parola.displayReset();
+    
+    
+      if (parolaIntensityManagedBySensor && ((millis()-millis_lightsensor) > LIGHT_SENSOR_POLLING) ) {
+        adjustLuminosity();
+        millis_lightsensor = millis();
+      }
+    
       if (!mqttclient.connected()) {
         Serial.println("not connected, reconnect");
         reconnect();
@@ -361,62 +425,13 @@ void loop() {
         // Client connected
         mqttclient.loop();
       }
-        
-      if((millis() - temps) > 10000) {
-          sendTemptToMQQT();
-          temps = millis(); 
+
+      // Every MQTT_POLLING_SENSOR
+      if((millis() - millis_temperature) > MQTT_POLLING_SENSOR) {
+          sendTemperatureToMQTT();
+          millis_temperature = millis(); 
       }
-      
     
-    switch (parolaCurrentType) {
-      if (parolaCurrentType >10){parolaCurrentType ==0;}
-
-      // No message to display
-      /*case 0: {
-          String time = NTP.getTimeDateString().substring(0,5);
-          char *cstr = new char[time.length()];
-          strcpy(cstr, time.c_str());
-          //Parola.displayText(cstr,  PA_CENTER, 20, 0,  PA_NO_EFFECT,  PA_NO_EFFECT);
-          Parola.setTextAlignment(PA_CENTER);
-          Parola.print(cstr);
-          //Parola.displayText(cstr, PA_CENTER, 30, 10, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-          //delete [] cstr;
-          delay(1000);
-        
-      }
-      break;*/
-      
-      // One time message
-      case 1:
-         // Parola.displayText(currentMessage, PA_CENTER, 25, 1200, PA_OPENING_CURSOR  , PA_OPENING_CURSOR );
-         Serial.print("message is ");
-         Serial.println(parolaCurrentMessage);
-          Parola.displayScroll(parolaCurrentMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);
-          parolaCurrentType=0;
-      break;
-
-      // Looping message
-      case 2:
-          // Parola.displayText(currentMessage, PA_CENTER, 25, 1200, PA_OPENING_CURSOR  , PA_OPENING_CURSOR );
-          Serial.print("message is ");
-          Serial.println(parolaCurrentMessage);
-          Parola.displayScroll(parolaCurrentMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);
-          parolaCurrentType=2;
-      break;
-      // TESTING
-      case 9:{
-          
-          parolaCurrentType=9;
-      }
-      break;
-      case 10:
-            getTemperature();
-            Serial.print("temperature is ");
-            Serial.println(temperatureCString);
-            Parola.displayScroll(temperatureCString,  PA_LEFT, PA_SCROLL_LEFT,  frameDelay);
-          parolaCurrentType=0;
-      break;
-    }
   }
   
 }
