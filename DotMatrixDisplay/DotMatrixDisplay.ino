@@ -49,7 +49,7 @@
 #include <PubSubClient.h>
 
 // DOT MATRIX PIN configuration
-#define MAX_DEVICES 4
+#define MAX_DEVICES 8
 #define CLK_PIN   D5  // or SCK
 #define DATA_PIN  D7  // or MOSI
 #define CS_PIN    D6  // or SS
@@ -58,10 +58,8 @@
 OneWire oneWire(DS18B20BUS);
 DallasTemperature DS18B20(&oneWire);
 char temperatureCString[6];
-char temperatureFString[6];
 
-long temps;
-long lastReconnectAttempt = 0;
+long temps;                                         // Use in the loop to store execution time
 
 #define TIMEOUT_PORTAL 10
 uint8_t parolaCurrentType = 0;
@@ -69,8 +67,12 @@ uint8_t frameDelay = 25; // default frame delay value
 char parolaCurrentMessage[256] = "";
 uint8_t pin_led = 16;
 
-const char* mqttServer = "prysme.net";
-IPAddress mqtt_server(37,187,1,120); // replace this with your MQTT brokers IP
+// MQTT CONFIGURATION
+const char* MQTT_TOPIC_MESSAGE = "jeedom/message";  // MQTT topic to subscribe for message
+const char* MQTT_CLIENT_ID ="ESP32Client";          // MQTT client id needed to get offline messages during reconnexion
+const IPAddress MQTT_BROKER_IP(37,187,1,120);       // MQTT BROKER IP address
+const int  MQTT_BROKER_PORT = 1883;                 // MQTT BROKER port
+
 WiFiClient espClient;
 PubSubClient mqttclient(espClient);
 
@@ -78,38 +80,16 @@ PubSubClient mqttclient(espClient);
   SSD1306Brzo  display(0x3c, D1, D2);
 #endif 
 
-//MD_Parola Parola = MD_Parola(DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES); // HARDWARE SPI for dot matrix display
 MD_Parola Parola = MD_Parola(CS_PIN, MAX_DEVICES); // HARDWARE SPI for dot matrix display
 
 void getTemperature() {
   float tempC;
-  float tempF;
-  do {
-    DS18B20.requestTemperatures(); 
-    tempC = DS18B20.getTempCByIndex(0);
-    dtostrf(tempC,2,2,temperatureCString);
-    tempF = DS18B20.getTempFByIndex(0);
-    dtostrf(tempF,3,2,temperatureFString);
-    delay(100);
-  } while (tempC==85.0 || tempC==(-127.0));
+  DS18B20.requestTemperatures(); 
+  tempC = DS18B20.getTempCByIndex(0);
+  dtostrf(tempC,2,2,temperatureCString);
 }
 
 uint8_t utf8Ascii(uint8_t ascii)
-// Convert a single Character from UTF8 to Extended ASCII according to ISO 8859-1,
-// also called ISO Latin-1. Codes 128-159 contain the Microsoft Windows Latin-1
-// extended characters:
-// - codes 0..127 are identical in ASCII and UTF-8
-// - codes 160..191 in ISO-8859-1 and Windows-1252 are two-byte characters in UTF-8
-//                 + 0xC2 then second byte identical to the extended ASCII code.
-// - codes 192..255 in ISO-8859-1 and Windows-1252 are two-byte characters in UTF-8
-//                 + 0xC3 then second byte differs only in the first two bits to extended ASCII code.
-// - codes 128..159 in Windows-1252 are different, but usually only the €-symbol will be needed from this range.
-//                 + The euro symbol is 0x80 in Windows-1252, 0xa4 in ISO-8859-15, and 0xe2 0x82 0xac in UTF-8.
-//
-// Modified from original code at http://playground.arduino.cc/Main/Utf8ascii
-// Extended ASCII encoding should match the characters at http://www.ascii-code.com/
-//
-// Return "0" if a byte has to be ignored.
 {
   static uint8_t cPrev;
   uint8_t c = '\0';
@@ -137,8 +117,6 @@ uint8_t utf8Ascii(uint8_t ascii)
 }
 
 void utf8Ascii(char* s)
-// In place conversion UTF-8 string to Extended ASCII
-// The extended ASCII string is always shorter.
 {
   uint8_t c, k = 0;
   char *cp = s;
@@ -172,30 +150,6 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   Parola.print("AP|MODE");
 }
 
-/**
- * Set the intensity of dot matrix.
- */
-void setIntensity(String value ){
-  long l = value.toInt();
-  byte i = (byte) l;
-  if ((i>=0) && (i<=15)){  
-    // Write the new value to EEPROM
-    EEPROM.write(0, i);       
-    EEPROM.commit();
-    Parola.setIntensity(i);   
-  } 
-}
-
-void setIntensity(int value ){
-  byte i = (byte) value;
-  if ((i>=0) && (i<=15)){  
-    // Write the new value to EEPROM
-    EEPROM.write(0, i);       
-    EEPROM.commit();
-    Parola.setIntensity(i);   
-  } 
-}
-
 #ifdef USE_OLED_DISPLAY
 /**
  * Display LOGO for 1 second (Logo is declared in res.h)
@@ -208,8 +162,6 @@ void OLEDWelcome() {
   display.clear();
 }
 #endif
-
-
 
 /**
  * Setup code, run once a startup
@@ -246,8 +198,6 @@ void setup() {
   Parola.setFont(ExtASCII);
   Parola.setTextAlignment(PA_CENTER);
   
-  
-
   WiFiManager wifiManager;
   wifiManager.setAPCallback(configModeCallback);
   //wifiManager.setConfigPortalTimeout(TIMEOUT_PORTAL);
@@ -303,13 +253,13 @@ void setup() {
   // init time
   temps = millis();
 
-  mqttclient.setServer(mqtt_server, 1883);
+  mqttclient.setServer(MQTT_BROKER_IP, MQTT_BROKER_PORT);
   mqttclient.setCallback(mqttCallback);
 }
-
 boolean reconnect() {
-  if (mqttclient.connect("ESP32Client")) {
-    mqttclient.subscribe("jeedom/display");
+  if (mqttclient.connect(MQTT_CLIENT_ID)) {
+    mqttclient.subscribe(MQTT_TOPIC_MESSAGE);
+    Serial.println("mqtt connected.");
   }
   return mqttclient.connected();
 }
