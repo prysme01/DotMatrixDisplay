@@ -71,6 +71,7 @@ uint8_t frameDelay = 25; // default frame delay value
 char parolaCurrentMessage[120];
 textEffect_t parolaEffectIn;
 textEffect_t parolaEffectOut;
+textPosition_t parolaPosition;
 int parolaAnimationSpeed;
 int parolaPause;
 bool parolaIntensityManagedBySensor = true;                                 // light sensor management on/off
@@ -88,8 +89,9 @@ const IPAddress MQTT_BROKER_IP(37,187,1,120);                               // M
 const int  MQTT_BROKER_PORT = 1883;                                         // MQTT BROKER port
 const int MQTT_POLLING_SENSOR = 10000;                                      // MQTT polling delay between sending temperature to jeedom in millisec
 
-WiFiClient espClient;
-PubSubClient mqttclient(espClient);
+WiFiClient wifiClient;
+WiFiManager wifiManager;
+PubSubClient mqttclient(wifiClient);
 
 #ifdef USE_OLED_DISPLAY
   SSD1306Brzo  display(0x3c, D1, D2);
@@ -206,18 +208,16 @@ void setup() {
   parola.setFont(ExtASCII);
   parola.setTextAlignment(PA_CENTER);
   
-  WiFiManager wifiManager;
   wifiManager.setAPCallback(configModeCallback);
   //wifiManager.setConfigPortalTimeout(TIMEOUT_PORTAL);
   Serial.println("Wifi.autoConnect start");
-  int wifiStatus = wifiManager.autoConnect();
-  if(!wifiStatus) {
-    parola.print("Wifi ko");
+  if(!wifiManager.autoConnect()) {
+    parola.displayText ("WIFI not working", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
     //reset and try again, or maybe put it to deep sleep
     //ESP.reset();
     //delay(5000);
   } else {
-    parola.displayText ("WIFI ok", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
+    parola.displayText ("WIFI Ready", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
     NTP.begin("pool.ntp.org", 1, true);
     NTP.setInterval(3600);
     NTP.onNTPSyncEvent([](NTPSyncEvent_t error) {
@@ -269,14 +269,14 @@ boolean reconnect() {
 }
 
 textEffect_t parseAnimation(int anim) {
-  // default animation is PA_FADE
-  textEffect_t choosenAnimation = PA_SCROLL_LEFT;
+  // unknown default animation
+  textEffect_t choosenAnimation = PA_SCROLL_RIGHT;
   switch (anim){
           case 0: 
-            choosenAnimation = PA_SCROLL_LEFT;
+            choosenAnimation = PA_SCROLL_RIGHT;
             break;    
           case 1: 
-            choosenAnimation = PA_SCROLL_RIGHT;
+            choosenAnimation = PA_SCROLL_LEFT;
             break;
           case 2:
             choosenAnimation = PA_SCROLL_UP;
@@ -349,55 +349,64 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     }
     
     // Dealing with intensity
-    if (root.containsKey("intensity")) {
-      if ( root["intensity"] != "") {
+    parolaIntensityManagedBySensor = true;
+    if (root.containsKey("lum")) {
+      if ( root["lum"] != "") {
         // set specific intensity
-        parola.setIntensity((int)root["intensity"]);
+        parola.setIntensity((int)root["lum"]);
         parolaIntensityManagedBySensor = false;
-      } else {
-        parolaIntensityManagedBySensor = true;
       }
     }
-
+    // Dealing with text position
+    // default CENTER
+    parolaPosition = PA_CENTER;
+    if (root.containsKey("pos")) {
+      if ( root["pos"] != "") {
+        int pos = (int)root["pos"];
+        switch (pos) {
+          case 0:parolaPosition=PA_LEFT;break;
+          case 1:parolaPosition=PA_CENTER;break;
+          case 2:parolaPosition=PA_RIGHT;break;
+        }
+      }
+    }
     // dealing with animation IN
-    parolaEffectIn = PA_GROW_UP;
+    parolaEffectIn = PA_SCROLL_RIGHT;
     // Dealing with intensity
-    if (root.containsKey("effect_in")) {
-      if ( root["effect_in"] != "") {
-        int anim = (int)root["effect_in"];
+    if (root.containsKey("eff_in")) {
+      if ( root["eff_in"] != "") {
+        int anim = (int)root["eff_in"];
         parolaEffectIn = parseAnimation(anim);
       }
     }
 
     // dealing with animation OUT
-    parolaEffectOut = PA_GROW_UP;
+    parolaEffectOut = PA_SCROLL_RIGHT;
     // Dealing with intensity
-    if (root.containsKey("effect_out")) {
-      if ( root["effect_out"] != "") {
-        int anim = (int)root["effect_out"];
+    if (root.containsKey("eff_out")) {
+      if ( root["eff_out"] != "") {
+        int anim = (int)root["eff_out"];
         parolaEffectOut = parseAnimation(anim);
       }
     }
     
     // dealing with speed
-    if (root.containsKey("animation_speed")) {
-      if ( root["animation_speed"] != "") {
-        parolaAnimationSpeed = (int)root["animation_speed"];
+    parolaAnimationSpeed = 15;
+    if (root.containsKey("speed")) {
+      if ( root["speed"] != "") {
+        parolaAnimationSpeed = (int)root["speed"];
       }
-    } else {
-      //Default speed
-      parolaAnimationSpeed = 15;
     }
+    
     // dealing with pause
+    parolaPause = 1000;
     if (root.containsKey("pause_between_in_and_out")) {
-      if ( root["pause_between_in_and_out"] != "") {
+      if ( root["pause"] != "") {
         parolaPause = (int)root["pause_between_in_and_out"];
       }
-    } else {
-      //Default pause
-      parolaPause = 1000;
     }
   }
+  
   // Free the memory
   free(payloadcopy);
 }
@@ -424,9 +433,10 @@ void adjustLuminosity() {
       //Serial.println(" - Tres lumineux");
       parola.setIntensity(15);
     }
+    Serial.print("Adjusting luminosity to ");
+    Serial.println(photocellReading);
   #endif
 }
-
 
 void sendTemperatureToMQTT() {
 
@@ -439,8 +449,7 @@ void sendTemperatureToMQTT() {
   JSONencoder["device"] = MQTT_TOPIC_SENSOR_DEVICE;
   JSONencoder["sensorType"] = "TemperatureSensor";
   JSONencoder["temperature"] = DS18B20.getTempCByIndex(0);
-  /*DS18B20.requestTemperatures(); 
-  dtostrf(DS18B20.getTempCByIndex(0),2,2,parolaCurrentMessage);*/
+
   char JSONmessageBuffer[100];
   JSONencoder.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
  
@@ -452,60 +461,35 @@ void sendTemperatureToMQTT() {
 }
 
 void loop() {
-  // Handle Web server client request
-  //server.handleClient();
-  //Serial.print("currentType : ");
-  //Serial.println(parolaCurrentType);
-  // start mqtt subscribe client
 
-  // Handle Dot Matrix display
-
-  /*if (parolaCurrentMessage!="") {  
-      Serial.print("message to animate : ");
-      
-      char* temp;
-      
-      
-      Serial.print("ici : ");
-      
-    }*/
   
   if (parola.displayAnimate())  {// True if animation ended
-    
+
     if (newMessageAvailable) {
       Serial.println("new msg available");
-      
-          char newMessage[120];
-          strcpy(newMessage,parolaCurrentMessage);
-          
-          parola.displayText(newMessage, PA_LEFT,parolaAnimationSpeed,parolaPause,parolaEffectIn,parolaEffectOut );
-          //parola.displayText ("WIFI ok", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
-          //parola.displayScroll(newMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);
-          newMessageAvailable = false;
-          Serial.println(newMessage);
-        }
-      //parola.displayReset();
+      char newMessage[120];
+      strcpy(newMessage,parolaCurrentMessage);
+      parola.displayText(newMessage, parolaPosition,parolaAnimationSpeed,parolaPause,parolaEffectIn,parolaEffectOut );
+      newMessageAvailable = false;
+    }
+    //parola.displayReset();
     
+    if (parolaIntensityManagedBySensor && ((millis()-millis_lightsensor) > LIGHT_SENSOR_POLLING) ) {
+      adjustLuminosity();
+      millis_lightsensor = millis();
+    }
     
-      if (parolaIntensityManagedBySensor && ((millis()-millis_lightsensor) > LIGHT_SENSOR_POLLING) ) {
-        adjustLuminosity();
-        millis_lightsensor = millis();
-      }
-    
-      if (!mqttclient.connected()) {
-        Serial.println("not connected, reconnect");
-        reconnect();
-      } else {
-        // Client connected
-        mqttclient.loop();
-      }
+    if (!mqttclient.connected()) {
+      reconnect();
+    } else {
+      // Client connected
+      mqttclient.loop();
+    }
 
-      // Every MQTT_POLLING_SENSOR
-      if((millis() - millis_temperature) > MQTT_POLLING_SENSOR) {
-          sendTemperatureToMQTT();
-          millis_temperature = millis(); 
-      }
-    
+    // Every MQTT_POLLING_SENSOR
+    if((millis() - millis_temperature) > MQTT_POLLING_SENSOR) {
+        sendTemperatureToMQTT();
+        millis_temperature = millis(); 
+    }
   }
-  
 }
