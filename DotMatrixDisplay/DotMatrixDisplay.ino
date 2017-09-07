@@ -69,7 +69,10 @@ uint8_t parolaCurrentType = 0;
 uint8_t frameDelay = 25; // default frame delay value
 //char parolaCurrentMessage[256] = "";
 char parolaCurrentMessage[120];
-String parolaCurrentAnimation;
+textEffect_t parolaEffectIn;
+textEffect_t parolaEffectOut;
+int parolaAnimationSpeed;
+int parolaPause;
 bool parolaIntensityManagedBySensor = true;                                 // light sensor management on/off
 bool newMessageAvailable = false;
 int LIGHT_SENSOR_POLLING=5000;                                              // Wait 5 sec to adjust LED matrix intensity based on light sensor
@@ -265,6 +268,59 @@ boolean reconnect() {
   return mqttclient.connected();
 }
 
+textEffect_t parseAnimation(int anim) {
+  // default animation is PA_FADE
+  textEffect_t choosenAnimation = PA_SCROLL_LEFT;
+  switch (anim){
+          case 0: 
+            choosenAnimation = PA_SCROLL_LEFT;
+            break;    
+          case 1: 
+            choosenAnimation = PA_SCROLL_RIGHT;
+            break;
+          case 2:
+            choosenAnimation = PA_SCROLL_UP;
+            break;
+          case 3:
+            choosenAnimation =  PA_SCROLL_DOWN;
+            break;
+          case 4:
+            choosenAnimation = PA_OPENING_CURSOR;
+            break;
+          case 5:
+            choosenAnimation = PA_CLOSING_CURSOR;
+            break;
+          case 6:
+            choosenAnimation = PA_WIPE_CURSOR;
+            break;
+          case 7:
+            choosenAnimation = PA_MESH;
+            break;
+          case 8:
+            choosenAnimation = PA_FADE;
+            break;
+          case 9:
+            choosenAnimation = PA_PRINT;
+            break;
+          case 10:
+            choosenAnimation = PA_BLINDS;
+            break;
+          case 11:
+            choosenAnimation = PA_SCAN_HORIZ0;
+            break;    
+          case 12:
+            choosenAnimation = PA_SCAN_HORIZ1;
+            break; 
+          case 13:
+            choosenAnimation = PA_SCAN_VERT0;
+            break; 
+          case 14:
+            choosenAnimation = PA_SCAN_VERT1;
+            break;                                                                                                                               
+        }
+    return choosenAnimation;
+}
+
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.println("mqttCallback start");
   // Allocate the correct amount of memory for the payload copy
@@ -279,50 +335,68 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     Serial.println("parseObject() failed");
     return;
   } else {
-
-    if (root["text"] != "") {
-      String text = root["text"].as<String>();
-      Serial.print("text: ");
-      Serial.println(text);
-      text.toCharArray(parolaCurrentMessage, sizeof(text)); 
-      Serial.print("parolaCurrentMessage: ");
-      Serial.println(parolaCurrentMessage);
-      //ltext.toCharArray(parolaCurrentMessage,ltext.length() + 1);
-    } else {
-      
-      strcpy (parolaCurrentMessage, "missing text in json");
-    }
+    // Dealing with TEXT
     newMessageAvailable = true;
-    Serial.print("priorite: ");
-    Serial.println((const char*)root["priorite"]);
-    Serial.print("type: ");
-    parolaCurrentType = (int)root["type"];
-    Serial.println((const char*)root["type"]);
-    Serial.print("intensite: ");
-    Serial.println((const char*)root["intensite"]);
-
-    // Dealing with intensity
-    if ( root["intensite"] != NULL) {
-      
-      // set specific intensity
-      parola.setIntensity(root["intensite"].as<String>().toInt());
-      parolaIntensityManagedBySensor = false;
+    if (root.containsKey("text")) {
+      if (root["text"] != "") {
+        String text = root["text"].as<String>();
+        text.toCharArray(parolaCurrentMessage, sizeof(text)); 
+      } else {
+        strcpy (parolaCurrentMessage, "empty text");
+      }
     } else {
-      parolaIntensityManagedBySensor = true;
-    }
-
-    // Dealing with intensity
-    if ( root["animation"] != NULL) {
-      Serial.print("Animation set to ");
-      Serial.println(root["animation"].as<String>());
-      parolaCurrentAnimation = root["animation"].as<String>();
-    } else {
-      Serial.println("Animation set to default PA_SLICE");
-      parolaCurrentAnimation = "PA_SLICE";
+      strcpy (parolaCurrentMessage, "miss text tag");
     }
     
-    Serial.print("repetition: ");
-    Serial.println((const char*)root["repetition"]);
+    // Dealing with intensity
+    if (root.containsKey("intensity")) {
+      if ( root["intensity"] != "") {
+        // set specific intensity
+        parola.setIntensity((int)root["intensity"]);
+        parolaIntensityManagedBySensor = false;
+      } else {
+        parolaIntensityManagedBySensor = true;
+      }
+    }
+
+    // dealing with animation IN
+    parolaEffectIn = PA_GROW_UP;
+    // Dealing with intensity
+    if (root.containsKey("effect_in")) {
+      if ( root["effect_in"] != "") {
+        int anim = (int)root["effect_in"];
+        parolaEffectIn = parseAnimation(anim);
+      }
+    }
+
+    // dealing with animation OUT
+    parolaEffectOut = PA_GROW_UP;
+    // Dealing with intensity
+    if (root.containsKey("effect_out")) {
+      if ( root["effect_out"] != "") {
+        int anim = (int)root["effect_out"];
+        parolaEffectOut = parseAnimation(anim);
+      }
+    }
+    
+    // dealing with speed
+    if (root.containsKey("animation_speed")) {
+      if ( root["animation_speed"] != "") {
+        parolaAnimationSpeed = (int)root["animation_speed"];
+      }
+    } else {
+      //Default speed
+      parolaAnimationSpeed = 15;
+    }
+    // dealing with pause
+    if (root.containsKey("pause_between_in_and_out")) {
+      if ( root["pause_between_in_and_out"] != "") {
+        parolaPause = (int)root["pause_between_in_and_out"];
+      }
+    } else {
+      //Default pause
+      parolaPause = 1000;
+    }
   }
   // Free the memory
   free(payloadcopy);
@@ -403,8 +477,8 @@ void loop() {
       
           char newMessage[120];
           strcpy(newMessage,parolaCurrentMessage);
-          textEffect_t te = PA_GROW_UP;
-          parola.displayText(newMessage, PA_LEFT,15,1000,PA_OPENING_CURSOR,PA_OPENING_CURSOR );
+          
+          parola.displayText(newMessage, PA_LEFT,parolaAnimationSpeed,parolaPause,parolaEffectIn,parolaEffectOut );
           //parola.displayText ("WIFI ok", PA_CENTER, 15, 1000, PA_OPENING_CURSOR , PA_OPENING_CURSOR );
           //parola.displayScroll(newMessage, PA_LEFT, PA_SCROLL_LEFT, frameDelay);
           newMessageAvailable = false;
