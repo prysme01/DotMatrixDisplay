@@ -21,6 +21,7 @@
   #include <SSD1306Spi.h>
   #include <SSD1306Brzo.h>
   #include <SSD1306Wire.h>
+  #include "res.h"                  // Picture resources in the sketch directory
 #endif
 
 #include <DNSServer.h>
@@ -37,7 +38,6 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 #include <WiFiManager.h>          //WiFi Configuration Magic https://github.com/tzapu/WiFiManager 
-#include "res.h"                  // Picture resources in the sketch directory
 #include <EEPROM.h>               // Library for handle teh EEPROM
 
 #include <TimeLib.h>
