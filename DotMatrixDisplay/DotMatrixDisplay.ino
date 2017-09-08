@@ -340,7 +340,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (root.containsKey("text")) {
       if (root["text"] != "") {
         String text = root["text"].as<String>();
-        text.toCharArray(parolaCurrentMessage, sizeof(text)); 
+        Serial.println(text);
+        Serial.println(text.length());
+        text.toCharArray(parolaCurrentMessage, text.length()+1); 
+        Serial.println(parolaCurrentMessage);
+        Serial.println(sizeof(parolaCurrentMessage));
+        
       } else {
         strcpy (parolaCurrentMessage, "empty text");
       }
@@ -400,7 +405,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     
     // dealing with pause
     parolaPause = 1000;
-    if (root.containsKey("pause_between_in_and_out")) {
+    if (root.containsKey("pause")) {
       if ( root["pause"] != "") {
         parolaPause = (int)root["pause_between_in_and_out"];
       }
@@ -466,10 +471,24 @@ void loop() {
   if (parola.displayAnimate())  {// True if animation ended
 
     if (newMessageAvailable) {
-      Serial.println("new msg available");
       char newMessage[120];
       strcpy(newMessage,parolaCurrentMessage);
+      Serial.println("new msg available : ");
+      Serial.print("text : ");
+      Serial.println(newMessage);
+      Serial.print("parolaPosition : ");
+      Serial.println(parolaPosition);
+      Serial.print("parolaAnimationSpeed : ");
+      Serial.println(parolaAnimationSpeed);
+      Serial.print("parolaPause : ");
+      Serial.println(parolaPause);
+      Serial.print("parolaEffectIn : ");
+      Serial.println(parolaEffectIn);
+      Serial.print("parolaEffectOut : ");
+      Serial.println(parolaEffectOut);
+
       parola.displayText(newMessage, parolaPosition,parolaAnimationSpeed,parolaPause,parolaEffectIn,parolaEffectOut );
+      //parola.displayScroll(newMessage, parolaPosition,parolaEffectIn,parolaAnimationSpeed );
       newMessageAvailable = false;
     }
     //parola.displayReset();
