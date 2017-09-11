@@ -1,18 +1,22 @@
 # DotMatrixDisplay
 
-Display messages to a DOT Matrix Display.
-I use it to print usefull messages from my home automation solution (jeedom).
+Display messages to a DOT Matrix LED Display.
+Message are sent to a MQTT server from any other application, the ESP8266 is subscribing to the channel and display messages depending on few parameters (animation, intensity, ...)
+
+###### My use case
+Displaying messages in the living room from my home automation solution (jeedom).
 
 ### Prerequisites
 
 * ESP8266 (mine is Wemos D1 NodeMcu  ESP12F)
 * DOT Matrix based on MAX7219
 * OLED display (SSD1306 and SH1106 based 128x64 pixel) - optional
+* MQTT server somewhere - preferred on your LAN for privacy
 * Temperature sensor DS18B20 - optional
 * Light sensor GL5516 - optional
 
 ### Features
-* Display message by using simple http remote command (GET URL)
+* Display message from a MQTT server
 * NTP client for date and time
 * Temperature measurement
 * LED matrix dimming based on light sensor
@@ -21,6 +25,7 @@ I use it to print usefull messages from my home automation solution (jeedom).
 
 ### Usage
 * Make sure your DotMatrix is properly configured according to [MAX72xx](https://github.com/MajicDesigns/MD_MAX72XX) (MAX72xx.h)
+* Adapt the code (parameters, MQTT ipaddress)
 * Drop the code to your ESP8266, third party libraries are included
 * First time the ESP8266 should act as an access point (ESPxxxx), connect to it then go to http://192.168.4.1/ to configure your WIFI SSID/Password (STORE in EEPROM), then restart
 * OLED should now display your IP on your network
