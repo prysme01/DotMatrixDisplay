@@ -31,8 +31,54 @@ Displaying messages in the living room from my home automation solution (jeedom)
 * OLED should now display your IP on your network
 * HTTP Command is available and describe at http://IP/command
 
+### MQTT 
+ESP8266 is subscribing to topic "jeedom/message" and expect this json syntax
+```json
+{
+   "text": "My TEXT ",
+   "priorite": 1,
+   "lum": 15,
+   "pos": 2,
+   "eff_in": 1,
+   "eff_out": 1,
+   "speed": 25,
+   "pause": 1000
+}
+```
+-- text : the message to display
+-- priority : TODO
+-- lum : intensity of the LCD panel (1-15)
+-- pos : 0-LEFT, 1-Center, 2-RIGHT
+-- speed : speed of the animation (fps)
+-- pause : time between entry and exit effect
+-- eff_out : exit effect (same value as eff_in)
+-- eff_in : entry effect
+* 0 : SCROLL RIGHT
+* 1 : SCROLL LEFT
+* 2 : SCROLL UP
+* 3 : SCROLL DOWN
+* 4 : OPENING CURSOR
+* 5 : CLOSING CURSOR
+* 6 : WIPE
+* 7 : MESH
+* 8 : FADE
+* 9 : PRINT (fixed message)
+* 10 : BLIND
+* 11 : SCAN HORIZONTAL 0
+* 12 : SCAN HORIZONTAL 1
+* 13 : SCAN VERITICAL 0
+* 14 : SCAN VERITICAL 1
+
+Prototype
+![alt text](https://raw.githubusercontent.com/prysme01/DotMatrixDisplay/master/img/prototype.jpg)
+Final and ugly soldering
+![alt text](https://raw.githubusercontent.com/prysme01/DotMatrixDisplay/master/img/final-soldering.jpg)
+
+![SMALL VIDEO example HERE](https://github.com/prysme01/DotMatrixDisplay/raw/master/img/example.mp4 "Video")
+
 ### Sketch
 ![alt text](https://raw.githubusercontent.com/prysme01/DotMatrixDisplay/master/img/sketch.png)
+
 
 ## License
 
