@@ -76,7 +76,7 @@ int parolaAnimationSpeed;
 int parolaPause;
 bool parolaIntensityManagedBySensor = true;                                 // light sensor management on/off
 bool newMessageAvailable = false;
-int LIGHT_SENSOR_POLLING=60*1000;                                              // Wait 5 sec to adjust LED matrix intensity based on light sensor
+int LIGHT_SENSOR_POLLING=60*1000;                                           // Wait 5 sec to adjust LED matrix intensity based on light sensor
 MD_Parola parola = MD_Parola(CS_PIN, MAX_DEVICES);                          // HARDWARE SPI for dot matrix display
 uint8_t pin_led = 16;
 
@@ -87,7 +87,7 @@ const char* MQTT_TOPIC_SENSOR_DEVICE  = "ESP8266_LED_MATRIX_BOX";           // M
 const char* MQTT_CLIENT_ID ="ESP32Client";                                  // MQTT client id needed to get offline messages during reconnexion | not working mqtt lib doesnot support clean session
 const IPAddress MQTT_BROKER_IP(37,187,1,120);                               // MQTT BROKER IP address
 const int  MQTT_BROKER_PORT = 1883;                                         // MQTT BROKER port
-const int MQTT_POLLING_SENSOR = 15*60*1000;                                      // MQTT polling delay between sending temperature to jeedom in millisec
+const int MQTT_POLLING_SENSOR = 15*60*1000;                                 // MQTT polling delay between sending temperature to jeedom in millisec
 
 WiFiClient wifiClient;
 WiFiManager wifiManager;
@@ -342,6 +342,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       if (root["text"] != "") {
         String text = root["text"].as<String>();
         text.toCharArray(parolaCurrentMessage, text.length()+1); 
+        utf8Ascii(parolaCurrentMessage);
         
       } else {
         strcpy (parolaCurrentMessage, "empty text");
