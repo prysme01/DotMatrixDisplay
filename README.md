@@ -79,6 +79,8 @@ Final and ugly soldering
 ### Sketch
 ![alt text](https://raw.githubusercontent.com/prysme01/DotMatrixDisplay/master/img/sketch.png)
 
+The sketch is not good for the DS18B20, so check on google on how connect properly the DS18B20.
+Also in the code the DS12B20 pin is set to D4 and on the image it's D1
 
 ## License
 
